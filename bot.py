@@ -91,4 +91,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    # Для Railway Free лучше использовать polling, так как webhook может быть сложнее настроить.
+    # Для Railway Free лучше использовать polling, так как webhook может быть сложнее настроит
