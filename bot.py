@@ -9,16 +9,17 @@ import os
 TOKEN = os.getenv("TOKEN")
 
 if not TOKEN:
-    raise Exception("ERROR: TOKEN is not set! Add your Telegram bot token in Railway Environment Variables.")
+    raise Exception("ERROR: TOKEN is not set! Добавьте ваш токен от BotFather в Environment Variables.")
 
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Структура: tasks[chat_id][user_id] = список задач
+# Структура для хранения задач: tasks[chat_id][user_id] = список задач
 tasks = {}
 
+# Команда /repeat
 @dp.message(Command("repeat"))
 async def repeat_text(message: types.Message):
     if message.chat.type not in ["group", "supergroup"]:
@@ -26,8 +27,12 @@ async def repeat_text(message: types.Message):
         return
 
     try:
-        # /repeat <кол-во> <интервал_мин> <текст>
+        # Проверяем, что есть все параметры
         parts = message.text.split(maxsplit=3)
+        if len(parts) < 4:
+            await message.answer("Использование:\n/repeat <кол-во> <интервал_мин> <текст>")
+            return
+
         count = int(parts[1])
         minutes = int(parts[2])
         text = parts[3]
@@ -40,21 +45,25 @@ async def repeat_text(message: types.Message):
             try:
                 for _ in range(count - 1):  # первый раз уже отправили
                     await asyncio.sleep(interval)
-                    await message.answer(text)
+                    try:
+                        await message.answer(text)
+                    except Exception as e:
+                        logging.error(f"Ошибка при отправке сообщения: {e}")
             except asyncio.CancelledError:
-                pass
+                logging.info(f"Задача пользователя {message.from_user.id} отменена")
 
+        # Создаём задачу
         task = asyncio.create_task(send_repeated())
 
+        # Сохраняем задачу для пользователя
         chat_tasks = tasks.setdefault(message.chat.id, {})
         user_tasks = chat_tasks.setdefault(message.from_user.id, [])
         user_tasks.append(task)
 
-    except (IndexError, ValueError):
-        await message.answer(
-            "Использование:\n/repeat <кол-во> <интервал_мин> <текст>"
-        )
+    except ValueError:
+        await message.answer("Ошибка: кол-во и интервал должны быть числами.")
 
+# Команда /stop
 @dp.message(Command("stop"))
 async def stop_repeat(message: types.Message):
     chat_tasks = tasks.get(message.chat.id, {})
@@ -68,13 +77,17 @@ async def stop_repeat(message: types.Message):
     else:
         await message.answer("У вас нет активных повторений.")
 
-async def main():
+# Устанавливаем команды в Telegram
+async def set_commands():
     await bot.set_my_commands([
         BotCommand(command="repeat", description="Повторить сообщение"),
         BotCommand(command="stop", description="Остановить свои повторения")
     ])
-    # polling удобно для бесплатных Railway проектов
-    await dp.start_polling(bot)
+
+# Главная функция
+async def main():
+    await set_commands()
+    await dp.start_polling(bot)  # Polling проще для Railway Free
 
 if __name__ == "__main__":
     asyncio.run(main())
